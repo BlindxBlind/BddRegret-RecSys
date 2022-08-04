@@ -1,14 +1,8 @@
 from calendar import c
+from unittest.util import _MAX_LENGTH
 import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
-
-def main():
-    print("test")
-    if __name__ == "__main__":
-        main()
-    print(ArmGen(3,4))    
-        
 
 
 def ArrivalGen(AgentNum, maxTime, type='Normal'):
@@ -82,23 +76,19 @@ def gapMatrixGen(agentFeatureSet, armFeatureSet): #The matrix of regret
     gapMatrix = temp.T
 
     return gapMatrix
-    #agentNum = np.shape(agentFeatureSet)[1]
-    #armNum = np.shape(armFeatureSet)[1]
-
-
-
+ 
 def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
     noiseStddev = 0.3
-    globalRegret1 = np.zeros(50000000) # UCB's global mean of Regret at each time - anyarrival
-    globalRegret2 = np.zeros(50000000) # CFUCB's global mean of Regret at each time - anyarrival
-    individualRegretSum1 = np.zeros(1000) # sum of UCB agents' sum of regrets until n for the trials until now
-    individualRegretSum2 = np.zeros(1000) # sum of CFUCB agents' sum of regrets until n for the trials until now
     
-    trialMeanRegret1 = np.zeros(10000) 
+    maxLength =5000000
 
-    maxLength =100000000
+    trialIndividualMeanRegret = np.zeros(maxLength)
+
     for trial in np.arange(1,trialNum):
-        storageProb1 = np.zeros((AgentNum, ArmNum, 2)) # the (agentNum x armNum) matrix of (#pullings, empirical mean) for UCB algorithm
+        
+        individualRegret = np.zeros((AgentNum, 5000000))
+        meanIndividualRegret = np.zeros(5000000)
+
         storageProb2 = np.zeros((AgentNum, ArmNum, 2)) # the (agentNum x armNum) matrix of (#pullings, empirical mean) for CFUCB algorithm
             #Arrival Generation
         arrivals = ArrivalGen(AgentNum, maxTime, type='Normal') # long array of [index, arrival time]
@@ -118,23 +108,6 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
         for arrival in arrivals:
             arrivalCount = arrivalCount + 1
             agentIndex = int(arrival[0])   
-
-            # UCB algorithm part
-
-            pullsVector1 = storageProb1[agentIndex, :, 0].astype(int)
-            totalPull1 = np.sum(pullsVector1)
-            meansVector1 = storageProb1[agentIndex, :, 1]
-            widthVector1 = pullsVector1
-            widthVector1 = np.where((widthVector1 == 0), 100000, np.sqrt(np.log(totalPull1)/pullsVector1))
-            ucbVector1 = meansVector1 + widthVector1 #ucb of all arms
-
-            armIndex1 = np.argmax(ucbVector1)
-            rewardObserved = rewardsMatrix[agentIndex][armIndex1]+np.random.normal(0,noiseStddev) #reward observed
-            pullOfChosen = storageProb1[agentIndex, armIndex1, 0]
-            meanOfChosen = storageProb1[agentIndex, armIndex1, 1]
-            storageProb1[agentIndex, armIndex1, 1] = (pullOfChosen*meanOfChosen+rewardObserved)/(pullOfChosen+1) # mean update
-            storageProb1[agentIndex, armIndex1, 0] = storageProb1[agentIndex, armIndex1, 0]+1 # pull number update
-            globalRegret1[arrivalCount] = (globalRegret1[arrivalCount]*(trial-1) + gapMatrix[agentIndex, armIndex1])/trial
             
 
             ######CFUCB algorithm part######################
@@ -155,8 +128,8 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
             topDindices = np.argpartition(pullsMatrix2.T, -(dim+1))[:,-(dim+1):].T # sorted top d+1 agent's indices for each arms
             componentIndices = (np.sort(np.where(topDindices==agentIndex, -1, topDindices).T).T)[1:,] # changed agentIndex to -1, sorted, and deleted - sorted Agent indices for each arm
             
-            sanitychecks = np.partition(pullsMatrix2.T, -(dim+1))[:,-(dim+1):].T
-            sanitychecks2 = (np.sort(np.where(topDindices==agentIndex, -1, sanitychecks).T).T)[1:,]
+            #sanitychecks = np.partition(pullsMatrix2.T, -(dim+1))[:,-(dim+1):].T
+            #sanitychecks2 = (np.sort(np.where(topDindices==agentIndex, -1, sanitychecks).T).T)[1:,]
             #if trial ==1 and agentIndex==1:
             #    print(sanitychecks2)
             #    print(storageProb2[:,:,0])
@@ -173,9 +146,7 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
 
                 Nmmin_dtj = np.amin(pullsofBestAgents)
                 
-                #if trial == 1 and armIndex == 1 and agentIndex ==1:
-                #    print(pullsofBestAgents)
-                #    print(Nmmin_dtj)
+        
                 
                 topDAgents = agentFeatureSet[componentIndices.T[armIndex]] #collected top d sorted agent indices for the arm for the arrived agent
                 coeffs = np.linalg.solve(topDAgents.T, agentFeatureSet[agentIndex])
@@ -197,8 +168,7 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
                     CFwidthVector2[armIndex] = 10000
                 else:
                     CFwidthVector2[armIndex] = np.sqrt(np.log(totalPull2/dim)/(Nmmin_dtj/coeffAbsSum**2))
-                    #if CFwidthVector2[armIndex]>widthVector1[armIndex]:
-                        #print(Nmmin_dtj,widthVector1[armIndex])
+                  
             
             CFucbVector2 = CFmeansVector2+CFwidthVector2 
             ucbVector2 = np.minimum(CFucbVector2, oucbVector2)
@@ -210,37 +180,47 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
             meanOfChosen2 = storageProb2[agentIndex, armIndex2, 1] # mean of agent, arm pair up to now
             storageProb2[agentIndex, armIndex2, 1] = (pullOfChosen2*meanOfChosen2+rewardObserved2)/(pullOfChosen2+1) # mean update
             storageProb2[agentIndex, armIndex2, 0] = storageProb2[agentIndex, armIndex2, 0]+1 # pull number update
-            globalRegret2[arrivalCount] = (globalRegret2[arrivalCount]*(trial-1) + gapMatrix[agentIndex, armIndex2])/trial
-            #if trial == 1 and agentIndex == 1 and arrivalCount>30000:
-                #print(CFwidthVector2, widthVector1)
-                #print(rewardsMatrix[agentIndex],CFmeansVector2, meansVector1)
-                #print(rewardsMatrix[agentIndex, armIndex] -sanity )
-                #quit()
-                #print(sanitychecks2)
-                #print(arrivalCount, Nmmin_dtj, pullsVector2[armIndex])
-
-        #after last arrival
-        print(trial)        
+            agentArrivalCount = np.sum(storageProb2[agentIndex,:,0])
+            #globalRegret2[arrivalCount] = (globalRegret2[arrivalCount]*(trial-1) + gapMatrix[agentIndex, armIndex2])/trial
+            ### mean over trials
+            individualRegret[agentIndex, int(agentArrivalCount)]=(individualRegret[agentIndex, int(agentArrivalCount)]*(trial-1)+gapMatrix[agentIndex, armIndex2])/trial
+    
+    
+        #Finish of all arrivals
+        for AgId in range(AgentNum):
+            indMaxlength = np.max(np.nonzero(individualRegret))
+            length = min(len(meanIndividualRegret), indMaxlength)
+            meanIndividualRegret = (meanIndividualRegret[:length]*AgId + individualRegret[AgId,:length])/(AgId+1) 
+        #Finish of a iteration
+        length2 = min(len(meanIndividualRegret), len(trialIndividualMeanRegret))
+        trialIndividualMeanRegret = (trialIndividualMeanRegret[:length2] *(trial-1) + meanIndividualRegret[:length2])/(trial)
+    #Finish of all iterations 
+        
+    return(trialIndividualMeanRegret)         
         
         
         ######### Finish of one trial ###
     
     ##### After all trials
 
-    globalRegret1 = (globalRegret1[0:maxLength])
-    globalRegret2 = (globalRegret2[0:maxLength])
-    Xglobal=np.arange(len(globalRegret1))
-    globalCumRegret1 = np.cumsum(globalRegret1)
-    globalCumRegret2 = np.cumsum(globalRegret2)
-    Y1 = globalCumRegret1
-    Y2 = globalCumRegret2
+Banditresult1 = np.cumsum(Bandit(16, 4, 2, 10, 500000))
+Banditresult2 = np.cumsum(Bandit(32, 4, 2, 10, 500000))
+Banditresult3 = np.cumsum(Bandit(64, 4, 2, 10, 500000))
 
-    plt.plot(Xglobal, Y1, 'o-',color='r', label='UCB')
-    plt.plot(Xglobal, Y2, '^',color='g', label='CFUCB')
-        # Naming the x-axis, y-axis and the whole graph
-    plt.xlabel("Total arrivals")
-    plt.ylabel("Total Regret")
-    plt.title("Total regret in terms of total arrivals")
-    plt.show()
+maxLength = min(len(Banditresult1), len(Banditresult2), len(Banditresult3))
 
-Bandit(32, 4, 2, 2, 2000)
+Xglobal=np.arange(maxLength)
+
+Y1 = Banditresult1[0:maxLength]
+Y2 = Banditresult2[0:maxLength]
+Y3 = Banditresult3[0:maxLength]
+
+plt.plot(Xglobal, Y1, 'o-', color='r', label='#Agent = 16')
+plt.plot(Xglobal, Y2, '^-', color='g', label='#Agent = 32')
+plt.plot(Xglobal, Y3, 's-', color='b', label='#Agent = 64')
+
+# Naming the x-axis, y-axis and the whole graph
+plt.xlabel("Individual arrivals")
+plt.ylabel("Individual regret")
+plt.title("Individual regret")
+plt.show()
