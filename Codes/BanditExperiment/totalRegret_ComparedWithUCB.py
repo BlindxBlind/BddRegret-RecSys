@@ -1,105 +1,20 @@
 from calendar import c
+from Banditlib import *
 import numpy as np
 import matplotlib.pyplot as plt
-import numpy as np
-
-def main():
-    print("test")
-    if __name__ == "__main__":
-        main()
-    print(ArmGen(3,4))    
-        
-
-
-def ArrivalGen(AgentNum, maxTime, type='Normal'):
-    Process_types = ['Normal', 'Exp']
-    if type not in Process_types:
-        raise ValueError("Invalid sim type. Expected one of: %s" % Process_types)
-    if type == 'Normal':
-        arrivalList = []
-        for j in range(AgentNum):
-            tempList = []
-            arrivalTime = 0
-            meaninter = np.random.uniform(2, 20)
-            stddev = meaninter/2
-            interSampled = np.random.normal(meaninter, stddev)
-            arrivalTime = np.maximum(interSampled, 0.2) + arrivalTime
-            while arrivalTime < maxTime:
-                tempList.append(np.array([int(j), arrivalTime]))
-                interSampled = np.random.normal(meaninter, stddev)
-                arrivalTime = np.maximum(interSampled, 0.2) + arrivalTime
-            arrivalList = arrivalList + tempList
-        sortedList = sorted(arrivalList, key=lambda x:x[1]) #sort all arrivals in the order of arrival time
-        sortedArray = np.vstack(sortedList) # Make it array
-    # Exponential arrival case
-    if type == 'Exp':
-        arrivalList = []
-        for j in range(AgentNum):
-            tempList = []
-            arrivalTime = 0
-            meaninter = np.random.uniform(2, 20)
-            interSampled = np.random.exponential(1/meaninter, stddev)
-            arrivalTime = interSampled + arrivalTime
-            while arrivalTime < maxTime:
-                tempList.append(np.array([j, arrivalTime]))
-                interSampled = np.random.exponential(1/meaninter, stddev)
-                arrivalTime = interSampled + arrivalTime
-            arrivalList = arrivalList + tempList
-        sortedList = sorted(arrivalList, key=lambda x:x[1]) #sort all arrivals in the order of arrival time
-        sortedArray = np.vstack(sortedList) # Make it array    
-
-    return sortedArray
-
-def AgentGen(AgentNum, dim):
-    listFeatureSet = []
-    count = 0
-    while count < AgentNum:
-        count = count+1
-        tempVec = np.random.normal(0,1,dim)
-        tempSquared = np.square(tempVec)
-        tempSum = np.sum(tempSquared)
-        featureVec = tempVec/np.sqrt(tempSum)
-        listFeatureSet = listFeatureSet + [featureVec] 
-        featureSet= np.vstack(listFeatureSet)
-    return featureSet
-
-def ArmGen(ArmNum, dim):
-    listFeatureSet = []
-    for _ in range(ArmNum):
-        tempVec = np.random.normal(0,1,dim)
-        tempSum = np.sum(np.square(tempVec))
-        featureVec = tempVec/np.sqrt(tempSum)
-        listFeatureSet = listFeatureSet + [featureVec] 
-        featureSet= np.vstack(listFeatureSet)
-    return featureSet
-
-def gapMatrixGen(agentFeatureSet, armFeatureSet): #The matrix of regret
-    if np.shape(agentFeatureSet)[1] !=  np.shape(armFeatureSet)[1] :
-        raise ValueError("Invalid feature set input") 
-    rewardsMatrix = np.inner(agentFeatureSet, armFeatureSet)
-    bestarms = np.amax(rewardsMatrix, axis = 1) #it returns a tranposed array of max along axis 1
-    temp = bestarms - rewardsMatrix.T
-    gapMatrix = temp.T
-
-    return gapMatrix
-    #agentNum = np.shape(agentFeatureSet)[1]
-    #armNum = np.shape(armFeatureSet)[1]
-
 
 
 def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
-    noiseStddev = 0.3
+    noiseStddev = 0.1
     globalRegret1 = np.zeros(50000000) # UCB's global mean of Regret at each time - anyarrival
     globalRegret2 = np.zeros(50000000) # CFUCB's global mean of Regret at each time - anyarrival
-    individualRegretSum1 = np.zeros(1000) # sum of UCB agents' sum of regrets until n for the trials until now
-    individualRegretSum2 = np.zeros(1000) # sum of CFUCB agents' sum of regrets until n for the trials until now
-    
-    trialMeanRegret1 = np.zeros(10000) 
+
 
     maxLength =100000000
     for trial in np.arange(1,trialNum):
         storageProb1 = np.zeros((AgentNum, ArmNum, 2)) # the (agentNum x armNum) matrix of (#pullings, empirical mean) for UCB algorithm
         storageProb2 = np.zeros((AgentNum, ArmNum, 2)) # the (agentNum x armNum) matrix of (#pullings, empirical mean) for CFUCB algorithm
+        NmminMatrix = np.zeros((AgentNum, ArmNum)) 
             #Arrival Generation
         arrivals = ArrivalGen(AgentNum, maxTime, type='Normal') # long array of [index, arrival time]
         maxLength = np.minimum(maxLength, len(arrivals))
@@ -107,6 +22,10 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
         agentFeatureSet = AgentGen(AgentNum, dim)
             #Arm feature set gen
         armFeatureSet = ArmGen(ArmNum, dim)
+
+        while not Condition1Checker(agentFeatureSet, armFeatureSet, dim):
+            agentFeatureSet = AgentGen(AgentNum, dim)
+            armFeatureSet = ArmGen(ArmNum, dim)
             #Gap matrix gen
         rewardsMatrix = np.matmul(agentFeatureSet, armFeatureSet.T)
         gapMatrix = gapMatrixGen(agentFeatureSet, armFeatureSet)
@@ -141,7 +60,7 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
 
             ## oucb calculation
 
-            pullsMatrix2 = storageProb2[:, :, 0].astype(int) ## in this case we consider full pulls of all agents and arms
+            pullsMatrix2 = storageProb2[:, :, 0] ## in this case we consider full pulls of all agents and arms
             
             pullsVector2 = storageProb2[agentIndex, :, 0].astype(int)
             totalPull2 = np.sum(pullsVector2)
@@ -157,9 +76,8 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
             
             sanitychecks = np.partition(pullsMatrix2.T, -(dim+1))[:,-(dim+1):].T
             sanitychecks2 = (np.sort(np.where(topDindices==agentIndex, -1, sanitychecks).T).T)[1:,]
-            #if trial ==1 and agentIndex==1:
-            #    print(sanitychecks2)
-            #    print(storageProb2[:,:,0])
+        
+                
 
             CFmeansVector2 = np.zeros(ArmNum)
             CFwidthVector2 = np.zeros(ArmNum)
@@ -172,19 +90,18 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
                 
 
                 Nmmin_dtj = np.amin(pullsofBestAgents)
+                NmminMatrix[agentIndex, armIndex] = np.amin(pullsofBestAgents)
+
                 
-                #if trial == 1 and armIndex == 1 and agentIndex ==1:
-                #    print(pullsofBestAgents)
-                #    print(Nmmin_dtj)
                 
+
+                                
                 topDAgents = agentFeatureSet[componentIndices.T[armIndex]] #collected top d sorted agent indices for the arm for the arrived agent
                 coeffs = np.linalg.solve(topDAgents.T, agentFeatureSet[agentIndex])
                 coeffAbsSum=np.sum(np.absolute(coeffs))
                 match = np.vstack((componentIndices.T[armIndex], coeffs)).T # an array of (agent index, coefficient) 
                 
-                #check = np.matmul(topDAgents.T, coeffs)
-                #check2 = agentFeatureSet[agentIndex]
-                #print(check-check2)
+              
                 CFmeansVector2[armIndex]= 0
                 sanity= 0
                 for temp in match:
@@ -192,14 +109,14 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
                     sanity = sanity +temp[1]*rewardsMatrix[int(temp[0])][armIndex]
                 
                 
-               
                 if Nmmin_dtj == 0 or totalPull2 == 0:
                     CFwidthVector2[armIndex] = 10000
                 else:
-                    CFwidthVector2[armIndex] = np.sqrt(np.log(totalPull2/dim)/(Nmmin_dtj/coeffAbsSum**2))
-                    #if CFwidthVector2[armIndex]>widthVector1[armIndex]:
-                        #print(Nmmin_dtj,widthVector1[armIndex])
-            
+                    #CFwidthVector2[armIndex] = np.sqrt(np.log(totalPull2/dim)/(NmminMatrix[agentIndex, armIndex]/coeffAbsSum**2))
+                    CFwidthVector2[armIndex] = np.sqrt(np.log(totalPull2)/(NmminMatrix[agentIndex, armIndex]))
+                    #The above equation, commented out, is what the theory uses for bounding regret.
+                    #The equation below, which is used in this code, is much more stable and used in this simulation.
+
             CFucbVector2 = CFmeansVector2+CFwidthVector2 
             ucbVector2 = np.minimum(CFucbVector2, oucbVector2)
             
@@ -211,13 +128,7 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
             storageProb2[agentIndex, armIndex2, 1] = (pullOfChosen2*meanOfChosen2+rewardObserved2)/(pullOfChosen2+1) # mean update
             storageProb2[agentIndex, armIndex2, 0] = storageProb2[agentIndex, armIndex2, 0]+1 # pull number update
             globalRegret2[arrivalCount] = (globalRegret2[arrivalCount]*(trial-1) + gapMatrix[agentIndex, armIndex2])/trial
-            #if trial == 1 and agentIndex == 1 and arrivalCount>30000:
-                #print(CFwidthVector2, widthVector1)
-                #print(rewardsMatrix[agentIndex],CFmeansVector2, meansVector1)
-                #print(rewardsMatrix[agentIndex, armIndex] -sanity )
-                #quit()
-                #print(sanitychecks2)
-                #print(arrivalCount, Nmmin_dtj, pullsVector2[armIndex])
+    
 
         #after last arrival
         print(trial)        
@@ -226,7 +137,7 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
         ######### Finish of one trial ###
     
     ##### After all trials
-
+    plotPeriod = int(maxLength/50)
     globalRegret1 = (globalRegret1[0:maxLength])
     globalRegret2 = (globalRegret2[0:maxLength])
     Xglobal=np.arange(len(globalRegret1))
@@ -235,12 +146,18 @@ def Bandit(AgentNum, ArmNum, dim, trialNum, maxTime):
     Y1 = globalCumRegret1
     Y2 = globalCumRegret2
 
-    plt.plot(Xglobal, Y1, 'o-',color='r', label='UCB')
-    plt.plot(Xglobal, Y2, '^',color='g', label='CFUCB')
+    plt.plot(Xglobal[::plotPeriod], Y1[::plotPeriod], 'o-', markersize=3.5, color='r', linewidth = 0.25, markerfacecolor = 'None', label='UCB')
+    plt.plot(Xglobal[::plotPeriod], Y2[::plotPeriod], '^-',markersize=3.5 , color='g', linewidth = 0.25, markerfacecolor = 'None',label='CFUCB')
+    plt.legend(loc="upper left")
         # Naming the x-axis, y-axis and the whole graph
-    plt.xlabel("Total arrivals")
+    plt.xlabel("Total arrivals of agents")
     plt.ylabel("Total Regret")
-    plt.title("Total regret in terms of total arrivals")
+    plt.grid(axis="x", linestyle = 'dashed')
+    plt.title("Comparison with CFUCB and UCB")
+    plt.savefig("RegretComparison.png")
     plt.show()
 
-Bandit(32, 4, 2, 2, 2000)
+Bandit(32, 4, 2, 5, 30000)
+# The probability that the Condition 1 of the paper does not hold for 32 agents, 4 arms, dimension=2 is quite high. 
+# If Condition 1 does not hold, you won't observe flat regret of CFUCB. This is because some agent's regret will be O(logT).
+# We excluded that possibility by using CondOneChecker function.
