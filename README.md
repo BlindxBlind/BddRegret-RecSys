@@ -1,5 +1,5 @@
-# Neurips2022_12872
-This is the temporal anonymized GitHub repository for the review of the paper 12872 submitted to Neurips 2022.
+# Bounded Regret for Recommender Systems
+This is the temporal anonymized GitHub repository for the paper ``Bounded $(\mathrm{O}(1))$ Regret Recommendation Learning via Synthetic Controls Oracle as a Pretrained Model''.
 
 Run the file totalRegret_ComparedWithUCB.py.
 Result:
